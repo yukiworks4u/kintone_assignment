@@ -1,14 +1,24 @@
 (async () => {
   try {
     // --- Configuration ---
-    const ORDERS_APP_ID = '13';
-    // According to your description, item codes are 4-digit numbers from 0000 to 0020.
+    const ORDERS_APP_ID = '13'; // Your "Orders" App ID
+
+    // !!! IMPORTANT: VERIFY AND UPDATE THESE FIELD CODES !!!
+    // Replace placeholder strings if your actual field codes are different.
+    const FIELD_CODES = {
+      order_id: "order_id",     // Field code for Order ID
+      status: "Status",         // <<<< UPDATED based on your feedback
+      order_type: "order_type", // Field code for Order Type (Sales/Purchase)
+      item_lookup: "item_lookup",// Field code for Item Lookup (should contain the 4-digit item code)
+      item_name: "item_name",   // Field code for Item Name
+      quantity: "quantity"      // Field code for Quantity
+    };
+
+    // Item codes 0000 to 0020
     const ALL_ITEM_CODES = Array.from({ length: 21 }, (_, i) => String(i).padStart(4, '0'));
 
     // --- Helper Function to Fetch All Records with Pagination ---
-    // Kintone's API typically returns a maximum of 500 records per call.
-    // This function handles fetching all records by making multiple calls if necessary.
-    async function getAllKintoneRecords(appId, query, fields) {
+    async function getAllKintoneRecords(appId, query, fieldsToRetrieve) {
       let allRecords = [];
       let offset = 0;
       const limit = 500; // Kintone API record limit per request
@@ -18,7 +28,7 @@
           const params = {
             app: appId,
             query: `${query} limit ${limit} offset ${offset}`,
-            fields: fields
+            fields: fieldsToRetrieve
           };
           const resp = await kintone.api(kintone.api.url('/k/v1/records.json', true), 'GET', params);
 
@@ -29,11 +39,14 @@
               break; // Fetched all records
             }
           } else {
-            break; // No more records or an error occurred
+            break; // No more records
           }
         } catch (error) {
           console.error(`Error fetching records for app ${appId} at offset ${offset}:`, error);
-          throw error; // Re-throw to stop execution if a fetch fails
+          if (error.errors) {
+            console.error('Kintone API error details:', JSON.stringify(error.errors, null, 2));
+          }
+          throw error;
         }
       }
       return allRecords;
@@ -41,23 +54,25 @@
 
     // --- Step #1: Extract specific order records from the Orders App ---
     console.log('Step #1: Fetching relevant order records...');
-    const orderQuery = 'status in ("販売: 商品配達完了 (Sales: Delivered)", "購入: 購入完了 (Purchase: Closed/Paid)") order by order_id asc';
-    const orderFields = ['order_id', 'status', 'order_type', 'item_lookup', 'item_name', 'quantity'];
+    // Query uses the field code for status
+    const orderQuery = `${FIELD_CODES.status} in ("販売: 商品配達完了 (Sales: Delivered)", "購入: 購入完了 (Purchase: Closed/Paid)") order by ${FIELD_CODES.order_id} asc`;
+    const fieldsToFetch = Object.values(FIELD_CODES);
 
-    const relevantOrders = await getAllKintoneRecords(ORDERS_APP_ID, orderQuery, orderFields);
+    const relevantOrders = await getAllKintoneRecords(ORDERS_APP_ID, orderQuery, fieldsToFetch);
 
     // --- Step #2: Display the result in console for checking ---
     console.log('\n--- Step #2: Fetched Relevant Orders ---');
     if (relevantOrders.length > 0) {
       console.log(`Found ${relevantOrders.length} relevant orders:`);
       relevantOrders.forEach(record => {
+        // Accessing fields using the defined FIELD_CODES
         console.log({
-          order_id: record.order_id.value,
-          status: record.status.value,
-          order_type: record.order_type.value,
-          item_lookup: record.item_lookup.value, // This should be the item_code
-          item_name: record.item_name.value,
-          quantity: record.quantity.value
+          order_id: record[FIELD_CODES.order_id]?.value,
+          status: record[FIELD_CODES.status]?.value,
+          order_type: record[FIELD_CODES.order_type]?.value,
+          item_lookup: record[FIELD_CODES.item_lookup]?.value,
+          item_name: record[FIELD_CODES.item_name]?.value,
+          quantity: record[FIELD_CODES.quantity]?.value
         });
       });
     } else {
@@ -68,26 +83,37 @@
     console.log('\n--- Step #3: Calculating Stock Levels ---');
     const stockLevels = {};
 
-    // Initialize stock for all 21 items to 0
+    // Initialize stock for all defined item codes to 0
     ALL_ITEM_CODES.forEach(code => {
       stockLevels[code] = 0;
     });
 
     relevantOrders.forEach(record => {
-      const itemCode = record.item_lookup.value; // This is the item_code (e.g., "0000", "0001", etc.)
-      const quantity = parseInt(record.quantity.value, 10);
-      const orderType = record.order_type.value;
+      const itemCode = record[FIELD_CODES.item_lookup]?.value;
+      const quantityVal = record[FIELD_CODES.quantity]?.value;
+      const orderType = record[FIELD_CODES.order_type]?.value;
+      const orderIdForWarning = record[FIELD_CODES.order_id]?.value || 'N/A';
+
+      if (!itemCode) {
+          console.warn(`Warning: Order ID ${orderIdForWarning} has no item_lookup value. Skipping this record for stock calculation.`);
+          return; // Skip if item code is missing
+      }
+      if (quantityVal === undefined || quantityVal === null) {
+          console.warn(`Warning: Order ID ${orderIdForWarning} (Item: ${itemCode}) has no quantity value. Skipping this record for stock calculation.`);
+          return; // Skip if quantity is missing
+      }
+
+      const quantity = parseInt(quantityVal, 10);
 
       if (isNaN(quantity)) {
-        console.warn(`Warning: Order ID ${record.order_id.value} has an invalid quantity: ${record.quantity.value}. Skipping this quantity calculation.`);
-        return; // Skip if quantity is not a valid number
+        console.warn(`Warning: Order ID ${orderIdForWarning} (Item: ${itemCode}) has an invalid quantity: ${quantityVal}. Skipping this quantity calculation.`);
+        return; // Skip if quantity is not a number
       }
 
       if (!stockLevels.hasOwnProperty(itemCode)) {
-        // This case should ideally not happen if ALL_ITEM_CODES is comprehensive
-        // and item_lookup values are always within that range.
-        // However, it's a good safeguard or indicator of unexpected item_lookup values.
-        console.warn(`Warning: Item code "${itemCode}" from Order ID ${record.order_id.value} was not in the predefined list of 21 items. It will be processed, but please check item codes.`);
+        // This handles cases where an item_lookup value might not be in ALL_ITEM_CODES
+        // Potentially useful if new items are added and not yet in ALL_ITEM_CODES
+        console.warn(`Warning: Item code "${itemCode}" from Order ID ${orderIdForWarning} was not in the predefined list of 21 items (0000-0020). It will be processed, but please check item codes in your 'Orders' app or the ALL_ITEM_CODES definition.`);
         stockLevels[itemCode] = 0;
       }
 
@@ -99,7 +125,7 @@
     });
 
     console.log('\n--- Final Calculated Stock Levels ---');
-    // Display stock for all 21 defined items, sorted by item code
+    // Display stock for all 21 defined items, sorted
     ALL_ITEM_CODES.sort().forEach(itemCode => {
       console.log(`${itemCode}: ${stockLevels[itemCode]}`);
     });
@@ -109,7 +135,7 @@
   } catch (error) {
     console.error('An error occurred during the script execution:', error);
     let errorMessage = error.message;
-    if (error.errors) { // Kintone API specific error
+    if (error.errors) { // Kintone API specific error details
         errorMessage += '\nDetails: ' + JSON.stringify(error.errors, null, 2);
     }
     console.error('Error details:', errorMessage);
