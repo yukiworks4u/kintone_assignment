@@ -20,8 +20,8 @@
     // Replace "YOUR_..." with the actual field codes from your "Items" App (App ID 15)
     // For example, if your item code field is "ProductSKU", change it to: item_code: "ProductSKU"
     const FIELD_CODES_ITEMS_APP = {
-      item_code: "YOUR_ITEM_CODE_FIELD_IN_ITEMS_APP", // <<<< UPDATE THIS STRING e.g., "item_code_actual"
-      stock: "YOUR_STOCK_FIELD_IN_ITEMS_APP"          // <<<< UPDATE THIS STRING e.g., "stock_on_hand"
+      item_code: "item_code", // <<<< UPDATE THIS STRING e.g., "item_code_actual"
+      stock: "stock"          // <<<< UPDATE THIS STRING e.g., "stock_on_hand"
     };
     // DO NOT change any other part of the script unless you are sure.
 
