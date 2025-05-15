@@ -19,33 +19,47 @@ const params = {
   totalCount: true // Optional: to get the total number of records matching the query
 };
 
-// Make the API call to get records
-kintone.api(kintone.api.url('/k/v1/records', true), 'GET', params, (resp) => {
-  // Success
-  console.log(`Successfully retrieved ${resp.records.length} records.`);
-  if (resp.totalCount) {
-    console.log(`Total matching records in Kintone: ${resp.totalCount}`);
-  }
+console.log("Requesting data from Kintone using Promises...");
 
-  if (resp.records.length > 0) {
-    console.log("Filtered and Sorted Order History:");
-    resp.records.forEach((record) => {
-      console.log("------------------------------------");
-      fields.forEach((field) => {
-        // Access the field value. Note: Field codes might differ in your app.
-        // The 'value' property holds the actual data for each field.
-        if (record[field]) {
-          console.log(`${field}: ${record[field].value}`);
-        } else {
-          console.log(`${field}: (No data)`);
-        }
-      });
+kintone.api(kintone.api.url('/k/v1/records', true), 'GET', params)
+  .then((resp) => {
+    // Success: resp already contains the records and other info
+    console.log(`Successfully retrieved ${resp.records.length} records.`);
+
+    // The filtered records are in resp.records
+    const retrievedRecords = resp.records;
+
+    // Now you can use retrievedRecords for your next steps
+    // For example, pass it to another function:
+    return processFilteredDataWithPromise(retrievedRecords); // return a value or another promise for chaining
+  })
+  .then((processingResult) => {
+    // This .then() executes after processFilteredDataWithPromise completes (if it returns a value or a resolved promise)
+    console.log("Result from processing data:", processingResult);
+    console.log("All steps completed successfully.");
+  })
+  .catch((error) => {
+    // Error handling for any part of the chain
+    console.error("Error during Kintone API call or processing:", error);
+    // You might want to handle the error state for your next steps as well
+    processFilteredDataWithPromise([]); // or handle error appropriately
+  });
+
+// Function to handle the next step, potentially returning a value or another Promise
+function processFilteredDataWithPromise(data) {
+  console.log("Processing the filtered data (Promise version)...");
+  if (data && data.length > 0) {
+    console.log(`Received ${data.length} records to process.`);
+    let processedCount = 0;
+    data.forEach(record => {
+      console.log(`Processing Record ID: ${record.Record_number.value}, Status: ${record.Status.value}`);
+      processedCount++;
     });
-    console.log("------------------------------------");
+    console.log("Finished processing data.");
+    return `Successfully processed ${processedCount} records.`; // Example return value
   } else {
-    console.log("No records found matching your criteria.");
+    console.log("No data to process or an error occurred.");
+    return "No data processed."; // Example return value
   }
-}, (error) => {
-  // Error
-  console.error("Error retrieving records from Kintone:", error);
-});
+  // If this function itself did something asynchronous, it could return a new Promise.
+}
