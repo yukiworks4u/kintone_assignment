@@ -1,3 +1,7 @@
+kintone.events.on('app.record.index.show', (event) => {
+
+// adding filter_v9
+
 (async () => {
   try {
     console.log('--- Starting Stock Calculation and Update Script ---');
@@ -229,3 +233,8 @@
     console.error('\n--- Script Finished with Errors ---');
   }
 })();
+
+// filter_v9 ends here!
+
+return event;
+});
